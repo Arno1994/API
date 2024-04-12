@@ -1,11 +1,9 @@
-# Project to fetch upcoming launch data with the Launch Library 2 API
+## Project to fetch upcoming launch data with the Launch Library 2 API
 # API Documentation can be found here: https://ll.thespacedevs.com/docs/#/
 
 # Import necessary modules
 import requests
-import dlt
 import psycopg2
-import pyodbc
 
 # Get URL for all upcoming launches
 launch_base_url = 'https://lldev.thespacedevs.com/2.2.0/launch/upcoming/'
@@ -49,20 +47,23 @@ def fetch_upcoming_launches_URL(limit_input):
         print(f"Error checking URL {query_url}: {e}")
     return response
 
+# Define a function that will loop through the list of retrieved data and only extract data that has the
+# 'LO' abbreviation. This will help filter data to only include launches that will go into Lunar Orbit
 def loop_list(data_list):
+    # This creates an empty list to store the Lunar Orbit launches
     sorted_list = []
     for i in data_list:
         try:
-            result = i.get("mission").get("orbit").get("abbrev")
+            result = i.get("mission").get("orbit").get("abbrev") #Get the abbreviation for item in the list
+            # Add the retrieved data to the list if the abbreviation is Lunar Orbit (LO)
             if result == 'LO':
                 sorted_list.append(i)
-            #print(i.get("mission").get("orbit").get("abbrev"))
         except AttributeError as e:
+            # If it is not the correct abbreviation. Pass and continue with the loop
             pass
     return sorted_list
 
 # Establish a connection to the PostgreSQL database
-
 conn = psycopg2.connect(
     dbname="postgres",
     user="postgres",
@@ -74,7 +75,7 @@ conn = psycopg2.connect(
 # Create a cursor object using the cursor() method
 cursor = conn.cursor()
 
-# Create a table
+# Create a table for the relevant data to be stored in
 create_table_query = '''
 CREATE TABLE IF NOT EXISTS launch_table (
     id VARCHAR(100),
@@ -87,7 +88,7 @@ CREATE TABLE IF NOT EXISTS launch_table (
 '''
 cursor.execute(create_table_query)
 conn.commit()
-print("Table created successfully")
+print("Table created successfully") #Confirm that the table was created
 
 
 # First use the function with a limit of 0 to get the amount of results. This is to minimise data called at the start
@@ -99,14 +100,14 @@ data_count = pre_launch_data.json().get('count') + 1
 # Now use the data_count variable for the limit to retrieve all the data
 launch_data = fetch_upcoming_launches_URL(data_count)
 
-# Display all the retrieved results from the response object
-#print(launch_data.json().get('results'))
-
+# Save the upcoming launches data that was retrieved to a variable
 launch_data_results = launch_data.json().get('results')
 
+# Use the obtained results in the loop_list function to only get the lunar orbit launches
 final_results = loop_list(launch_data_results)
 
-
+# Loop through the final filtered list and insert all the relevant variables and insert into the table and commit to
+# the docker postgres database
 for i in final_results:
     id = i.get('id')
     window_start = i.get('window_start')
@@ -119,17 +120,6 @@ for i in final_results:
     cursor.execute('''INSERT INTO launch_table (id, start_window, end_window, type_launch, launchpad_location, 
     launch_description) VALUES (%s, %s, %s, %s, %s, %s)''', (id, window_start, window_end, type, location, description))
     conn.commit()
-
-# Execute the SELECT query
-#select_query = f"SELECT * FROM launch_table"
-#cursor.execute(select_query)
-
-# Fetch all rows from the result set
-#rows = cursor.fetchall()
-
-# Print the rows
-#for row in rows:
-    #print(row)
 
 cursor.close()
 conn.close()
